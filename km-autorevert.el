@@ -1,4 +1,4 @@
-;;; km-autorevert.el --- Automatically revert buffers when switching windows or buffers. -*- lexical-binding: t; -*-
+;;; km-autorevert.el --- Automatically revert buffers when switching windows -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2025 Karim Aziiev <karim.aziiev@gmail.com>
 
@@ -50,7 +50,7 @@ revert buffers. This hook is triggered when a frame gains focus,
 allowing for automatic buffer updates.
 
 Functions added to this hook should handle buffer reversion tasks
-to ensure that the content displayed is up-to-date. "
+to ensure that the content displayed is up-to-date."
   :type 'hook
   :group 'autorevert)
 
@@ -58,7 +58,7 @@ to ensure that the content displayed is up-to-date. "
   "The delay for which `km-autorevert-switch-frame-hook' won't trigger again.
 
 This exists to prevent switch-frame hooks getting triggered too aggressively."
-  :group 'km-autorevert
+  :group 'autorevert
   :type 'float)
 
 (defun km-autorevert-auto-revert-buffer ()
@@ -114,9 +114,10 @@ List of hooks are specified in `km-autorevert-switch-window-hook'."
     (let ((gc-cons-threshold most-positive-fixnum))
       (run-hooks 'km-autorevert-switch-window-hook))))
 
-(defun km-autorevert---run-switch-frame-hooks-fn (_)
+(defun km-autorevert--run-switch-frame-hooks-fn (_)
+  "Remove the hook and run frame switch hooks if debounce delay passed."
   (remove-hook 'pre-redisplay-functions
-               #'km-autorevert---run-switch-frame-hooks-fn)
+               #'km-autorevert--run-switch-frame-hooks-fn)
   (let ((gc-cons-threshold most-positive-fixnum))
     (dolist (fr (visible-frame-list))
       (let ((state (frame-focus-state fr)))
@@ -139,7 +140,7 @@ List of hooks are specified in `km-autorevert-switch-window-hook'."
                (setq last-focus-state
                      (mapcar #'frame-focus-state (frame-list))))
         (add-hook 'pre-redisplay-functions
-                  #'km-autorevert---run-switch-frame-hooks-fn))))
+                  #'km-autorevert--run-switch-frame-hooks-fn))))
 
 ;;;###autoload
 (define-minor-mode km-autorevert-mode
@@ -154,7 +155,7 @@ specified hooks when these events happen."
   :global t
   (remove-hook 'window-selection-change-functions
                #'km-autorevert-run-switch-window-hooks-h)
-  (remove-hook window-buffer-change-functions
+  (remove-hook 'window-buffer-change-functions
                #'km-autorevert-run-switch-buffer-hooks-h)
   (remove-hook 'server-switch-hook
                #'km-autorevert-run-switch-buffer-hooks-h)
