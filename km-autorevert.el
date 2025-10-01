@@ -35,12 +35,12 @@
 (defcustom km-autorevert-switch-buffer-hook '(km-autorevert-auto-revert-buffer)
   "A list of hooks run after changing the current buffer."
   :type 'hook
-  :group 'autorevert)
+  :group 'auto-revert)
 
 (defcustom km-autorevert-switch-window-hook '(km-autorevert-auto-revert-buffer)
   "A list of hooks run after changing the focused windows."
   :type 'hook
-  :group 'autorevert)
+  :group 'auto-revert)
 
 (defcustom km-autorevert-switch-frame-hook '(km-autorevert-auto-revert-buffers-h)
   "Hook triggered when switching frames to auto-revert buffers.
@@ -52,32 +52,85 @@ allowing for automatic buffer updates.
 Functions added to this hook should handle buffer reversion tasks
 to ensure that the content displayed is up-to-date."
   :type 'hook
-  :group 'autorevert)
+  :group 'auto-revert)
 
 (defcustom km-autorevert--switch-frame-hook-debounce-delay 2.0
   "The delay for which `km-autorevert-switch-frame-hook' won't trigger again.
 
 This exists to prevent switch-frame hooks getting triggered too aggressively."
-  :group 'autorevert
+  :group 'auto-revert
   :type 'float)
 
+(defcustom km-autorevert-buffers-selection 'km-autorevert-get-visible-buffers
+  "Function determining which buffers to auto-revert, defaulting to visible ones.
+
+Determines which buffers should be considered for auto-reversion.
+
+The value can be a function that returns a list of buffers to be
+auto-reverted. The default function is `km-autorevert-get-visible-buffers',
+which selects buffers currently visible in windows.
+
+Alternatively, it can be set to `buffer-list' to consider all buffers,
+or a custom function that returns a list of live buffers. The custom function
+should be defined to take no arguments and return a list of buffers.
+
+Note that additional checks will be run also by
+`km-autorevert-buffer-predicate'."
+  :group 'auto-revert
+  :type
+  '(radio
+    (function-item km-autorevert-get-visible-buffers)
+    (function-item buffer-list)
+    (function
+     :tag "Custom function"
+     :doc
+     "This function will be called without arguments and should return list of live buffers")))
+
+(defcustom km-autorevert-buffer-predicate 'km-autorevert-should-revert-p
+  "Predicate function determining if the current buffer should be auto-reverted.
+
+The function is called without arguments and should return non-nil if the
+current buffer should be reverted."
+  :group 'auto-revert
+  :type
+  '(radio
+    (function-item km-autorevert-should-revert-p)
+    (function
+     :tag "Custom predicate"
+     :doc
+     "The function is called without arguments.")))
+
+
+(defun km-autorevert-should-revert-p ()
+  "Determine if the current buffer should be auto-reverted."
+  (and
+   buffer-file-name
+   (not (bound-and-true-p auto-revert-mode))
+   (not (active-minibuffer-window))
+   (or auto-revert-remote-files
+       (not (file-remote-p buffer-file-name nil t)))
+   (file-readable-p buffer-file-name)))
+
 (defun km-autorevert-auto-revert-buffer ()
-  "Enable auto-revert mode unless certain conditions are met."
-  (unless (or (bound-and-true-p auto-revert-mode)
-              (active-minibuffer-window)
-              (and buffer-file-name
-                   auto-revert-remote-files
-                   (file-remote-p buffer-file-name nil t)))
+  "Revert current buffer, unless certain conditions are met."
+  (when (funcall km-autorevert-buffer-predicate)
     (let ((auto-revert-mode t))
       (auto-revert-handler))))
 
 (defun km-autorevert-auto-revert-buffers-h ()
   "Auto revert stale buffers in visible windows, if necessary."
-  (dolist (buf (km-autorevert--visible-buffers))
-    (with-current-buffer buf
-      (km-autorevert-auto-revert-buffer))))
+  (unless (or (bound-and-true-p global-auto-revert-mode)
+              (active-minibuffer-window))
+    (dolist (buf (funcall km-autorevert-buffers-selection))
+      (unless (buffer-local-value 'auto-revert-mode buf)
+        (when-let* ((file (buffer-local-value 'buffer-file-name buf)))
+          (when (or auto-revert-remote-files
+                    (not (file-remote-p file nil t)))
+            (with-current-buffer buf
+              (let ((auto-revert-mode t))
+                (auto-revert-handler)))))))))
 
-(defun km-autorevert--visible-buffers (&optional buffer-list all-frames)
+(defun km-autorevert-get-visible-buffers (&optional buffer-list all-frames)
   "Return visible buffers, optionally filtering by BUFFER-LIST and ALL-FRAMES.
 
 Optional argument BUFFER-LIST is a list of buffers to filter the visible buffers
